@@ -1,10 +1,11 @@
 import re
 import time
-import requests
-import pandas as pd
-import xml.etree.ElementTree as ET
-import streamlit as st
 from io import BytesIO
+import xml.etree.ElementTree as ET
+
+import pandas as pd
+import requests
+import streamlit as st
 
 st.set_page_config(page_title="App Store Reviews Parser", layout="wide")
 
@@ -71,7 +72,6 @@ def fetch_one_page(app_id: str, country: str, page: int):
     for idx, entry in enumerate(entries):
         rating = safe_text(entry.findtext("im:rating", default="", namespaces=NS))
 
-        # Первая entry может быть метаданными приложения
         if not rating:
             continue
 
@@ -140,15 +140,21 @@ def collect_last_reviews(app_url: str, last_n: int = 100):
     app_id = extract_app_id(app_url)
     all_rows = []
 
-    for country in COUNTRY_CODES:
+    progress_bar = st.progress(0)
+    status = st.empty()
+
+    for i, country in enumerate(COUNTRY_CODES, start=1):
+        status.write(f"Обрабатываю регион: {country} ({i}/{len(COUNTRY_CODES)})")
         rows = fetch_reviews_for_country(app_id, country, max_pages=150)
         all_rows.extend(rows)
+        progress_bar.progress(i / len(COUNTRY_CODES))
+
+    status.write("Сбор завершён.")
 
     if not all_rows:
         raise ValueError("Не удалось собрать отзывы.")
 
     df = pd.DataFrame(all_rows)
-
     df = df.drop_duplicates(subset=["review_id"], keep="first").copy()
     df["date_time"] = pd.to_datetime(df["date_time"], errors="coerce", utc=True).dt.tz_localize(None)
 
